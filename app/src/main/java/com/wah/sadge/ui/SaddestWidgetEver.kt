@@ -1,10 +1,15 @@
 package com.wah.sadge.ui
 
+import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import android.widget.RemoteViews
+import android.widget.Toast
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -16,6 +21,8 @@ import kotlin.concurrent.thread
 
 const val WORK_INTERVAL = 3L
 const val WORK_NAME = "Update widget work"
+const val ACTION_COPY_TO_CLIPBOARD = "action_copy_to_clipboard"
+const val EXCHANGE_RATE_INTENT_EXTRA_NAME = "exchange_rate"
 
 class SaddestWidgetEver : AppWidgetProvider() {
     override fun onUpdate(
@@ -38,7 +45,21 @@ class SaddestWidgetEver : AppWidgetProvider() {
             request)
     }
 
-    override fun onDisabled(context: Context) { }
+    override fun onReceive(context: Context?, intent: Intent?) {
+        if (ACTION_COPY_TO_CLIPBOARD == intent?.action) {
+            context?.let {
+                val clipboard = it.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip: ClipData = ClipData.newPlainText("exchange rate",
+                    intent.getDoubleExtra(EXCHANGE_RATE_INTENT_EXTRA_NAME, .0).toString())
+                clipboard.setPrimaryClip(clip)
+                Toast
+                    .makeText(it, "Exchange rate copied to clipboard", Toast.LENGTH_SHORT)
+                    .show()
+            }
+        }
+
+        super.onReceive(context, intent)
+    }
 }
 
 internal fun updateAppWidget(
@@ -47,10 +68,20 @@ internal fun updateAppWidget(
     appWidgetId: Int
 ) {
     thread {
-        val widgetText = getUSDExchangeRateBlocking(context)
+        val exchangeRate = getUSDExchangeRateBlocking(context)
 
         val views = RemoteViews(context.packageName, R.layout.saddest_widget_ever)
-        views.setTextViewText(R.id.appwidget_text, widgetText.toString())
+        views.setTextViewText(R.id.appwidget_text, exchangeRate.toString())
+
+        val clickIntent = Intent(context, SaddestWidgetEver::class.java).apply {
+            action = ACTION_COPY_TO_CLIPBOARD
+            putExtra(EXCHANGE_RATE_INTENT_EXTRA_NAME, exchangeRate)
+        }
+
+        val clickPendingIntent =
+            PendingIntent.getBroadcast(context, 0, clickIntent, PendingIntent.FLAG_MUTABLE)
+
+        views.setOnClickPendingIntent(R.id.appwidget_text, clickPendingIntent)
 
         appWidgetManager.updateAppWidget(appWidgetId, views)
     }
